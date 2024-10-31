@@ -1,10 +1,11 @@
 from typing import Annotated
 from datetime import datetime, timedelta, timezone
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, APIRouter
 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uvicorn import run
 from sqlmodel import SQLModel, Field, create_engine
+from pydantic import BaseModel, Field as PDField
 from sqlalchemy.orm import sessionmaker, Session
 import hashlib
 import jwt
@@ -33,8 +34,12 @@ from helpful import (
     verify_password,
 )
 
+auth_router = APIRouter(prefix="/users", tags=["users"])
+product_router = APIRouter(prefix="/prod", tags=["prod"])
 
-@app.get("/users/me", response_model=User)
+
+@product_router.get("/users/me", response_model=User)
+@auth_router.get("/me", response_model=User)
 async def read_users_me(
     current_user: Annotated[
         User,
@@ -44,7 +49,9 @@ async def read_users_me(
     return {"current_user": current_user}
 
 
-@app.get("/items/")
+@product_router.get(
+    "/items/",
+)
 async def read_items(
     current_user: Annotated[
         User,
@@ -54,7 +61,31 @@ async def read_items(
     return {"current_user": current_user}
 
 
-@app.post("/token")
+class Item(BaseModel):
+    name: str = PDField(examples=["Foo"])
+    description: int | str | None = PDField(
+        default=None, examples=["A very nice Item", 124]
+    )
+    price: float = PDField(examples=[35.4])
+    tax: float | None = PDField(default=None, examples=[3.2])
+
+
+@product_router.put("/items/{item_id}", summary="ОНОВИТИ ЕЛЕМЕНТ")
+async def update_item(item_id: int, item: Item):
+    """
+    Create an item with all the information:
+
+    - **name**: each item must have a name
+    - **description**: a long description
+    - **price**: required
+    - **tax**: if the item doesn't have tax, you can omit this
+    - **tags**: a set of unique tag strings for this item
+    """
+    results = {"item_id": item_id, "item": item}
+    return results
+
+
+@auth_router.post("/token")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
@@ -84,4 +115,6 @@ def main():
                 hashed_password=get_password_hash("123456qwerty"),
             )
         )
+    app.include_router(auth_router)
+    app.include_router(product_router)
     run(app)
